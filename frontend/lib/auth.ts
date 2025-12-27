@@ -17,16 +17,22 @@ export const auth = {
       throw new Error('Auth can only be used in browser');
     }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/auth/login`, {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    console.log('Login attempt to:', `${apiUrl}/auth/login`);
+
+    const response = await fetch(`${apiUrl}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: email.trim(), password: password.trim() }),
     });
 
     if (!response.ok) {
-      throw new Error('Invalid credentials');
+      console.error('Login failed with status:', response.status);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error details:', errorData);
+      throw new Error(errorData.message || `Login failed: ${response.statusText}`);
     }
 
     const data = await response.json();

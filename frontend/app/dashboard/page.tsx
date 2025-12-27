@@ -1,6 +1,5 @@
 'use client';
 
-import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { api } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
@@ -54,54 +53,52 @@ export default function DashboardPage() {
   };
 
   return (
-    <DashboardLayout>
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground mb-1">
-            Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Overview of compliance and maintenance status
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="glass rounded-lg p-6 h-24 animate-pulse"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              label="Driver Profiles"
-              value={stats.driverCount || 0}
-              description="Total active drivers"
-            />
-            <StatCard
-              label="Compliance Records"
-              value={stats.complianceCount || 0}
-              description="Active compliance items"
-            />
-            <StatCard
-              label="Overdue"
-              value={stats.overdueCount || 0}
-              description="Requires immediate attention"
-              variant="destructive"
-            />
-            <StatCard
-              label="Due Soon"
-              value={stats.dueSoonCount || 0}
-              description="Within 7 days"
-              variant="warning"
-            />
-          </div>
-        )}
+    <div className="max-w-7xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground mb-1">
+          Dashboard
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Overview of compliance and maintenance status
+        </p>
       </div>
-    </DashboardLayout>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="glass rounded-lg p-6 h-24 animate-pulse"
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Driver Profiles"
+            value={stats.driverCount || 0}
+            description="Total active drivers"
+          />
+          <StatCard
+            label="Compliance Records"
+            value={stats.complianceCount || 0}
+            description="Active compliance items"
+          />
+          <StatCard
+            label="Overdue"
+            value={stats.overdueCount || 0}
+            description="Requires immediate attention"
+            variant="destructive"
+          />
+          <StatCard
+            label="Due Soon"
+            value={stats.dueSoonCount || 0}
+            description="Within 7 days"
+            variant="warning"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

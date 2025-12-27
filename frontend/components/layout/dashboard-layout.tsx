@@ -1,20 +1,27 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import { Sidebar } from './sidebar';
-import { Header } from './header';
-import { MobileNav } from './mobile-nav';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { Sidebar } from "./sidebar";
+import { Header } from "./header";
+import { MobileNav } from "./mobile-nav";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     if (!auth.isAuthenticated()) {
       router.push('/login');
     }
   }, [router]);
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted) {
+    return null;
+  }
 
   if (!auth.isAuthenticated()) {
     return null;
