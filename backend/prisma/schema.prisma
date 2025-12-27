@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  DEPOT_MANAGER
+  DRIVER
+}
+
+enum ComplianceTypeName {
+  PME
+  GRS
+  TR_4
+  OC
+}
+
+enum AssetType {
+  TOWER_CAR
+  EQUIPMENT
+}
+
+enum MaintenanceTypeName {
+  B_CHECK
+  C_CHECK
+  D_CHECK
+  E_CHECK
+  UT
+  MI
+  BATTERY
+  GENERATOR
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  depotId      String?
+  isActive     Boolean  @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  depot        Depot?         @relation(fields: [depotId], references: [id])
+  driverProfile DriverProfile?
+
+  @@index([depotId])
+  @@index([email])
+  @@index([isActive, deletedAt])
+  @@map("users")
+}
+
+model Depot {
+  id        String    @id @default(uuid())
+  name      String
+  code      String    @unique
+  address   String?
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users          User[]
+  driverProfiles DriverProfile[]
+  assets         Asset[]
+  routeSections  RouteSection[]
+  auditLogs      AuditLog[]
+
+  @@index([isActive, deletedAt])
+  @@map("depots")
+}
+
+model DriverProfile {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  pfNumber          String    @unique
+  driverName        String
+  designation       String
+  basicPay          Int
+  dateOfAppointment  DateTime
+  dateOfEntry       DateTime
+  depotId           String
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  depot             Depot             @relation(fields: [depotId], references: [id])
+  compliances       DriverCompliance[]
+  routeAuthorizations DriverRouteAuth[]
+
+  @@index([depotId])
+  @@index([pfNumber])
+  @@index([isActive, deletedAt])
+  @@map("driver_profiles")
+}
+
+model ComplianceType {
+  id                    String    @id @default(uuid())
+  name                  ComplianceTypeName @unique
+  defaultFrequencyMonths Int
+  isActive              Boolean   @default(true)
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  compliances           DriverCompliance[]
+
+  @@index([isActive, deletedAt])
+  @@map("compliance_types")
+}
+
+model DriverCompliance {
+  id                String    @id @default(uuid())
+  driverProfileId   String
+  complianceTypeId  String
+  doneDate          DateTime
+  dueDate           DateTime
+  frequencyMonths   Int
+  notes             String?
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  driverProfile     DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  complianceType    ComplianceType @relation(fields: [complianceTypeId], references: [id])
+
+  @@index([driverProfileId])
+  @@index([dueDate])
+  @@index([isActive, deletedAt])
+  @@map("driver_compliances")
+}
+
+model RouteSection {
+  id            String    @id @default(uuid())
+  code          String
+  name          String
+  description   String?
+  isPredefined  Boolean   @default(false)
+  depotId       String?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  depot         Depot?            @relation(fields: [depotId], references: [id])
+  routeAuths    DriverRouteAuth[]
+
+  @@unique([code, depotId])
+  @@index([depotId])
+  @@index([isPredefined])
+  @@index([isActive, deletedAt])
+  @@map("route_sections")
+}
+
+model DriverRouteAuth {
+  id             String    @id @default(uuid())
+  driverProfileId String
+  routeSectionId String
+  authorizedDate DateTime
+  expiryDate     DateTime
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  driverProfile  DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  routeSection  RouteSection  @relation(fields: [routeSectionId], references: [id])
+
+  @@index([driverProfileId])
+  @@index([expiryDate])
+  @@index([isActive, deletedAt])
+  @@map("driver_route_auths")
+}
+
+model Asset {
+  id              String    @id @default(uuid())
+  assetNumber     String
+  assetType       AssetType
+  depotId         String
+  currentHours    Int?
+  lastServiceDate DateTime?
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  depot           Depot                @relation(fields: [depotId], references: [id])
+  maintenanceSchedules MaintenanceSchedule[]
+
+  @@unique([assetNumber])
+  @@index([depotId])
+  @@index([isActive, deletedAt])
+  @@map("assets")
+}
+
+model MaintenanceType {
+  id                    String    @id @default(uuid())
+  name                  MaintenanceTypeName @unique
+  defaultIntervalMonths Int?
+  defaultIntervalHours  Int?
+  isDateBased           Boolean
+  isUsageBased          Boolean
+  isActive              Boolean   @default(true)
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  maintenanceSchedules  MaintenanceSchedule[]
+
+  @@index([isActive, deletedAt])
+  @@map("maintenance_types")
+}
+
+model MaintenanceSchedule {
+  id                  String    @id @default(uuid())
+  assetId             String
+  maintenanceTypeId   String
+  lastCompletedDate   DateTime?
+  nextDueDate         DateTime?
+  lastCompletedHours  Int?
+  nextDueHours         Int?
+  notes               String?
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  asset               Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  maintenanceType     MaintenanceType @relation(fields: [maintenanceTypeId], references: [id])
+
+  @@index([assetId])
+  @@index([nextDueDate])
+  @@index([isActive, deletedAt])
+  @@map("maintenance_schedules")
+}
+
+model SystemSetting {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  value       String
+  description String?
+  updatedBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("system_settings")
+}
+
+model Notification {
+  id                String    @id @default(uuid())
+  userId            String
+  title             String
+  message           String
+  isRead            Boolean   @default(false)
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime  @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  userId      String
+  depotId     String?
+  entityType  String
+  entityId    String
+  action      String // CREATE | UPDATE | DELETE
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  depot       Depot?    @relation(fields: [depotId], references: [id])
+
+  @@index([userId])
+  @@index([depotId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: railway_compliance_db
+    environment:
+      POSTGRES_USER: railway_user
+      POSTGRES_PASSWORD: railway_password
+      POSTGRES_DB: railway_compliance
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U railway_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: railway_compliance_backend
+    environment:
+      DATABASE_URL: postgresql://railway_user:railway_password@postgres:5432/railway_compliance?schema=public
+      PORT: 4000
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-in-production}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@railway.com}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-ChangeThisPassword123!}
+      TIMEZONE: ${TIMEZONE:-Asia/Kolkata}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
