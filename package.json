@@ -1,13 +1,11 @@
 {
-  "name": "tower-car-driver",
+  "name": "railway-compliance-system",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Railway Compliance and Maintenance Management System",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "db:start": "docker compose up -d postgres",
+    "db:stop": "docker compose down"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "license": "UNLICENSED"
 }

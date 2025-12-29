@@ -22,23 +22,41 @@ export class DriverProfilesService {
     createDto: CreateDriverProfileDto,
     currentUser: CurrentUserPayload,
   ) {
-    // Check if pfNumber already exists
-    const existingProfile = await this.prisma.driverProfile.findUnique({
-      where: { pfNumber: createDto.pfNumber },
+    // Check if pfNumber already exists (only active profiles)
+    const existingProfile = await this.prisma.driverProfile.findFirst({
+      where: {
+        pfNumber: createDto.pfNumber,
+        isActive: true,
+        deletedAt: null,
+      },
     });
 
     if (existingProfile) {
       throw new ConflictException('Driver profile with this PF number already exists');
     }
 
-    // Check if email already exists
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: createDto.email },
+    // Check if email already exists (only active users)
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: createDto.email,
+        isActive: true,
+        deletedAt: null,
+      },
     });
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
     }
+
+    // Check for soft-deleted user with same email - we need to handle this
+    const deletedUser = await this.prisma.user.findUnique({
+      where: { email: createDto.email },
+    });
+
+    // Check for soft-deleted profile with same PF number
+    const deletedProfile = await this.prisma.driverProfile.findUnique({
+      where: { pfNumber: createDto.pfNumber },
+    });
 
     // Depot Manager can only create drivers in their depot
     if (currentUser.role === UserRole.DEPOT_MANAGER) {
@@ -56,47 +74,171 @@ export class DriverProfilesService {
       throw new NotFoundException('Depot not found');
     }
 
-    const passwordHash = await this.passwordService.hashPassword(createDto.password);
+    // Hash the password
+    const passwordHash = await this.passwordService.hashPassword(createDto.password.trim());
 
-    // Create user first
-    const user = await this.prisma.user.create({
-      data: {
-        email: createDto.email,
-        passwordHash,
-        role: UserRole.DRIVER,
-        depotId: createDto.depotId,
-      },
-    });
+    let user;
+    let driverProfile;
 
-    // Create driver profile
-    const driverProfile = await this.prisma.driverProfile.create({
-      data: {
-        userId: user.id,
-        pfNumber: createDto.pfNumber,
-        driverName: createDto.driverName,
-        designation: createDto.designation,
-        basicPay: createDto.basicPay,
-        dateOfAppointment: new Date(createDto.dateOfAppointment),
-        dateOfEntry: new Date(createDto.dateOfEntry),
-        depotId: createDto.depotId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
+    // If there's a deleted user with same email, reactivate it
+    if (deletedUser && !deletedUser.isActive) {
+      user = await this.prisma.user.update({
+        where: { id: deletedUser.id },
+        data: {
+          passwordHash,
+          role: UserRole.DRIVER,
+          depotId: createDto.depotId,
+          isActive: true,
+          deletedAt: null,
+        },
+      });
+
+      // Check if there's a deleted profile linked to this user or with same PF
+      if (deletedProfile && !deletedProfile.isActive) {
+        // Reactivate the profile
+        driverProfile = await this.prisma.driverProfile.update({
+          where: { id: deletedProfile.id },
+          data: {
+            userId: user.id,
+            driverName: createDto.driverName,
+            designation: createDto.designation,
+            basicPay: createDto.basicPay,
+            dateOfAppointment: new Date(createDto.dateOfAppointment),
+            dateOfEntry: new Date(createDto.dateOfEntry),
+            depotId: createDto.depotId,
+            isActive: true,
+            deletedAt: null,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                role: true,
+              },
+            },
+            depot: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        });
+      } else {
+        // Create new profile for reactivated user
+        driverProfile = await this.prisma.driverProfile.create({
+          data: {
+            userId: user.id,
+            pfNumber: createDto.pfNumber,
+            driverName: createDto.driverName,
+            designation: createDto.designation,
+            basicPay: createDto.basicPay,
+            dateOfAppointment: new Date(createDto.dateOfAppointment),
+            dateOfEntry: new Date(createDto.dateOfEntry),
+            depotId: createDto.depotId,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                role: true,
+              },
+            },
+            depot: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        });
+      }
+    } else if (deletedProfile && !deletedProfile.isActive) {
+      // Profile exists but was deleted, user might be different - create new user
+      user = await this.prisma.user.create({
+        data: {
+          email: createDto.email,
+          passwordHash,
+          role: UserRole.DRIVER,
+          depotId: createDto.depotId,
+        },
+      });
+
+      // Reactivate the profile with new user
+      driverProfile = await this.prisma.driverProfile.update({
+        where: { id: deletedProfile.id },
+        data: {
+          userId: user.id,
+          driverName: createDto.driverName,
+          designation: createDto.designation,
+          basicPay: createDto.basicPay,
+          dateOfAppointment: new Date(createDto.dateOfAppointment),
+          dateOfEntry: new Date(createDto.dateOfEntry),
+          depotId: createDto.depotId,
+          isActive: true,
+          deletedAt: null,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+            },
+          },
+          depot: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
           },
         },
-        depot: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
+      });
+    } else {
+      // No deleted records, create fresh
+      user = await this.prisma.user.create({
+        data: {
+          email: createDto.email,
+          passwordHash,
+          role: UserRole.DRIVER,
+          depotId: createDto.depotId,
+        },
+      });
+
+      driverProfile = await this.prisma.driverProfile.create({
+        data: {
+          userId: user.id,
+          pfNumber: createDto.pfNumber,
+          driverName: createDto.driverName,
+          designation: createDto.designation,
+          basicPay: createDto.basicPay,
+          dateOfAppointment: new Date(createDto.dateOfAppointment),
+          dateOfEntry: new Date(createDto.dateOfEntry),
+          depotId: createDto.depotId,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+            },
+          },
+          depot: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
           },
         },
-      },
-    });
+      });
+    }
 
     return driverProfile;
   }

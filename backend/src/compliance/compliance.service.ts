@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateDriverComplianceDto } from './dto/create-driver-compliance.dto';
 import { UpdateDriverComplianceDto } from './dto/update-driver-compliance.dto';
 import { CurrentUserPayload } from '../common/decorators/current-user.decorator';
@@ -7,7 +8,10 @@ import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class ComplianceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async create(createDto: CreateDriverComplianceDto, currentUser: CurrentUserPayload) {
     // Verify driver profile exists and user has access
@@ -185,7 +189,20 @@ export class ComplianceService {
     updateDto: UpdateDriverComplianceDto,
     currentUser: CurrentUserPayload,
   ) {
-    await this.findOne(id, currentUser);
+    const existingCompliance = await this.findOne(id, currentUser);
+
+    // Check if this is an override operation (changing doneDate, dueDate, or frequencyMonths)
+    const isOverride =
+      (updateDto.doneDate !== undefined && updateDto.doneDate !== existingCompliance.doneDate.toISOString().split('T')[0]) ||
+      (updateDto.dueDate !== undefined && updateDto.dueDate !== existingCompliance.dueDate.toISOString().split('T')[0]) ||
+      (updateDto.frequencyMonths !== undefined && updateDto.frequencyMonths !== existingCompliance.frequencyMonths);
+
+    // Super Admin override requires reason and justification
+    if (isOverride && currentUser.role === UserRole.SUPER_ADMIN) {
+      if (!updateDto.overrideReason || !updateDto.overrideJustification) {
+        throw new ForbiddenException('Override requires reason and justification');
+      }
+    }
 
     const updateData: any = {};
 
@@ -202,7 +219,7 @@ export class ComplianceService {
       updateData.notes = updateDto.notes;
     }
 
-    return this.prisma.driverCompliance.update({
+    const updatedCompliance = await this.prisma.driverCompliance.update({
       where: { id },
       data: updateData,
       include: {
@@ -212,10 +229,30 @@ export class ComplianceService {
             id: true,
             driverName: true,
             pfNumber: true,
+            depotId: true,
           },
         },
       },
     });
+
+    // Audit log with override details
+    await this.auditService.log(
+      {
+        userId: currentUser.id,
+        depotId: currentUser.depotId || updatedCompliance.driverProfile.depotId,
+      },
+      'DriverCompliance',
+      id,
+      'UPDATE',
+      {
+        ...existingCompliance,
+        overrideReason: updateDto.overrideReason,
+        overrideJustification: updateDto.overrideJustification,
+      },
+      updatedCompliance,
+    );
+
+    return updatedCompliance;
   }
 
   async remove(id: string, currentUser: CurrentUserPayload) {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 import { DriverProfilesModule } from './driver-profiles/driver-profiles.module';
 import { DepotsModule } from './depots/depots.module';
 import { ComplianceModule } from './compliance/compliance.module';
@@ -21,6 +22,7 @@ import { TimezoneModule } from './common/timezone/timezone.module';
     }),
     PrismaModule,
     AuthModule,
+    UsersModule,
     DriverProfilesModule,
     DepotsModule,
     ComplianceModule,

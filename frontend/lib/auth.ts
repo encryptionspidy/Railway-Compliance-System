@@ -18,7 +18,6 @@ export const auth = {
     }
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-    console.log('Login attempt to:', `${apiUrl}/auth/login`);
 
     const response = await fetch(`${apiUrl}/auth/login`, {
       method: 'POST',
@@ -29,9 +28,7 @@ export const auth = {
     });
 
     if (!response.ok) {
-      console.error('Login failed with status:', response.status);
       const errorData = await response.json().catch(() => ({}));
-      console.error('Error details:', errorData);
       throw new Error(errorData.message || `Login failed: ${response.statusText}`);
     }
 

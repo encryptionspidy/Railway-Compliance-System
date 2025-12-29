@@ -1,150 +1,205 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { DashboardLayout } from '@/components/layout/dashboard-layout';
-import { api } from '@/lib/api';
-import { auth } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from "react";
+import { auth, User } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toaster";
+import { Settings, Save, RotateCcw } from "lucide-react";
 
 interface SystemSetting {
   id: string;
   key: string;
   value: string;
-  description?: string;
+  description: string | null;
+  updatedBy: string | null;
   updatedAt: string;
 }
 
 export default function SettingsPage() {
-  const router = useRouter();
-  const user = auth.getCurrentUser();
+  const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user?.role !== 'SUPER_ADMIN') {
-      router.push('/dashboard');
-      return;
-    }
+    const currentUser = auth.getCurrentUser();
+    setUser(currentUser);
     loadSettings();
-  }, [user, router]);
+  }, []);
 
   const loadSettings = async () => {
     try {
-      const response = await api.get('/system-settings');
+      const response = await api.get("/system-settings");
       setSettings(response.data);
+      // Initialize edited values
+      const values: Record<string, string> = {};
+      response.data.forEach((s: SystemSetting) => {
+        values[s.key] = s.value;
+      });
+      setEditedValues(values);
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error("Failed to load settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load system settings",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const startEdit = (setting: SystemSetting) => {
-    setEditing(setting.key);
-    setEditValue(setting.value);
-  };
+  const handleSave = async (key: string) => {
+    setSaving(key);
 
-  const cancelEdit = () => {
-    setEditing(null);
-    setEditValue('');
-  };
-
-  const saveSetting = async (key: string) => {
     try {
-      await api.patch(`/system-settings/${key}`, { value: editValue });
-      await loadSettings();
-      setEditing(null);
-      setEditValue('');
-    } catch (error) {
-      console.error('Failed to update setting:', error);
-      alert('Failed to update setting. Please try again.');
+      await api.patch(`/system-settings/${key}`, {
+        value: editedValues[key],
+      });
+      toast({
+        title: "Success",
+        description: `Setting "${key}" updated`,
+        variant: "success",
+      });
+      loadSettings();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to update setting",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(null);
     }
   };
 
-  if (user?.role !== 'SUPER_ADMIN') {
-    return null;
+  const handleReset = (key: string, originalValue: string) => {
+    setEditedValues((prev) => ({
+      ...prev,
+      [key]: originalValue,
+    }));
+  };
+
+  const hasChanges = (key: string) => {
+    const setting = settings.find((s) => s.key === key);
+    return setting ? editedValues[key] !== setting.value : false;
+  };
+
+  if (user?.role !== "SUPER_ADMIN") {
+    return (
+      <div className="flex flex-col items-center justify-center h-64">
+        <p className="text-lg text-muted-foreground">Access denied</p>
+        <p className="text-sm text-muted-foreground">
+          Only Super Admins can manage system settings
+        </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
-    <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground mb-1">
-            System Settings
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Configure system-wide parameters
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-bold">System Settings</h2>
+        <p className="text-muted-foreground">
+          Configure system-wide settings and thresholds
+        </p>
+      </div>
 
-        {loading ? (
-          <div className="glass rounded-lg p-8 text-center text-muted-foreground">
-            Loading...
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {settings.map((setting) => (
-              <div
-                key={setting.id}
-                className="glass rounded-lg p-6 border border-slate-700/50"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <h3 className="text-sm font-semibold text-foreground mb-1">
-                      {setting.key}
-                    </h3>
-                    {setting.description && (
-                      <p className="text-xs text-muted-foreground mb-3">
-                        {setting.description}
-                      </p>
-                    )}
-                    {editing === setting.key ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-lg bg-background/50 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                        />
-                        <button
-                          onClick={() => saveSetting(setting.key)}
-                          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="px-4 py-2 rounded-lg glass border border-slate-700/50 hover:bg-accent/50 transition-colors text-sm"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+      {/* Settings Cards */}
+      <div className="grid gap-4">
+        {settings.map((setting) => (
+          <Card key={setting.id}>
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="text-base font-mono">{setting.key}</CardTitle>
+                  {setting.description && (
+                    <CardDescription className="mt-1">
+                      {setting.description}
+                    </CardDescription>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {hasChanges(setting.key) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleReset(setting.key, setting.value)}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant={hasChanges(setting.key) ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleSave(setting.key)}
+                    disabled={!hasChanges(setting.key) || saving === setting.key}
+                  >
+                    {saving === setting.key ? (
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-mono text-foreground bg-accent/20 px-2 py-1 rounded">
-                          {setting.value}
-                        </span>
-                        <button
-                          onClick={() => startEdit(setting)}
-                          className="px-3 py-1 rounded-lg glass border border-slate-700/50 hover:bg-accent/50 transition-colors text-xs"
-                        >
-                          Edit
-                        </button>
-                      </div>
+                      <Save className="h-4 w-4 mr-2" />
                     )}
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Last updated:{' '}
-                      {new Date(setting.updatedAt).toLocaleString()}
-                    </p>
-                  </div>
+                    Save
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor={setting.key}>Value</Label>
+                <Input
+                  id={setting.key}
+                  value={editedValues[setting.key] || ""}
+                  onChange={(e) =>
+                    setEditedValues((prev) => ({
+                      ...prev,
+                      [setting.key]: e.target.value,
+                    }))
+                  }
+                  className="max-w-md"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Last updated: {new Date(setting.updatedAt).toLocaleString()}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-    </DashboardLayout>
+
+      {/* Info Card */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <Settings className="w-5 h-5 text-primary mt-0.5" />
+            <div>
+              <p className="font-medium">About System Settings</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                These settings control system behavior such as notification thresholds and
+                timezone configuration. Changes take effect immediately for new operations.
+                All changes are logged in the audit trail.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
+

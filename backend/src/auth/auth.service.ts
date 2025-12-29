@@ -54,22 +54,33 @@ export class AuthService implements OnModuleInit {
   }
 
   async login(loginDto: LoginDto) {
+    this.logger.debug(`Login attempt for email: ${loginDto.email}`);
+
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email },
     });
 
-    if (!user || !user.isActive || user.deletedAt) {
+    if (!user) {
+      this.logger.warn(`Login failed: User not found for email ${loginDto.email}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isActive || user.deletedAt) {
+      this.logger.warn(`Login failed: User ${loginDto.email} is inactive or deleted`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const isPasswordValid = await this.passwordService.comparePassword(
-      loginDto.password,
+      loginDto.password.trim(),
       user.passwordHash,
     );
 
     if (!isPasswordValid) {
+      this.logger.warn(`Login failed: Invalid password for user ${loginDto.email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    this.logger.debug(`Login successful for user: ${loginDto.email}`);
 
     const userPayload = {
       id: user.id,

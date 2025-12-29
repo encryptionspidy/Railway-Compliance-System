@@ -1,6 +1,9 @@
-FROM node:20-alpine AS builder
+FROM node:20-bullseye-slim AS builder
 
 WORKDIR /app
+
+# Note: We intentionally use Debian Bullseye (OpenSSL 1.1) for Prisma engine compatibility
+# without requiring package installation during docker build.
 
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -12,7 +15,7 @@ COPY . .
 RUN npm run build
 RUN npx prisma generate
 
-FROM node:20-alpine AS production
+FROM node:20-bullseye-slim AS production
 
 WORKDIR /app
 

@@ -11,6 +11,7 @@ interface MaintenanceSchedule {
   asset: {
     assetNumber: string;
     assetType: string;
+    currentHours?: number;
     depot: {
       name: string;
     };

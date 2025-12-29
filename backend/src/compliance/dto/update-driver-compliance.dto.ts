@@ -16,4 +16,13 @@ export class UpdateDriverComplianceDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  // Override fields for Super Admin
+  @IsString()
+  @IsOptional()
+  overrideReason?: string;
+
+  @IsString()
+  @IsOptional()
+  overrideJustification?: string;
 }

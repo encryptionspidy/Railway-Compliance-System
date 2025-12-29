@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateRouteSectionDto } from './dto/create-route-section.dto';
 import { UpdateRouteSectionDto } from './dto/update-route-section.dto';
 import { CreateDriverRouteAuthDto } from './dto/create-driver-route-auth.dto';
@@ -9,7 +10,10 @@ import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class RoutesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   // Route Sections
   async createSection(createDto: CreateRouteSectionDto, currentUser: CurrentUserPayload) {
@@ -309,7 +313,19 @@ export class RoutesService {
     updateDto: UpdateDriverRouteAuthDto,
     currentUser: CurrentUserPayload,
   ) {
-    await this.findOneRouteAuth(id, currentUser);
+    const existingAuth = await this.findOneRouteAuth(id, currentUser);
+
+    // Check if this is an override operation
+    const isOverride =
+      (updateDto.authorizedDate !== undefined && updateDto.authorizedDate !== existingAuth.authorizedDate.toISOString().split('T')[0]) ||
+      (updateDto.expiryDate !== undefined && updateDto.expiryDate !== existingAuth.expiryDate.toISOString().split('T')[0]);
+
+    // Super Admin override requires reason and justification
+    if (isOverride && currentUser.role === UserRole.SUPER_ADMIN) {
+      if (!updateDto.overrideReason || !updateDto.overrideJustification) {
+        throw new ForbiddenException('Override requires reason and justification');
+      }
+    }
 
     const updateData: any = {};
 
@@ -326,7 +342,7 @@ export class RoutesService {
       }
     }
 
-    return this.prisma.driverRouteAuth.update({
+    const updatedAuth = await this.prisma.driverRouteAuth.update({
       where: { id },
       data: updateData,
       include: {
@@ -336,10 +352,30 @@ export class RoutesService {
             id: true,
             driverName: true,
             pfNumber: true,
+            depotId: true,
           },
         },
       },
     });
+
+    // Audit log with override details
+    await this.auditService.log(
+      {
+        userId: currentUser.id,
+        depotId: currentUser.depotId || updatedAuth.driverProfile.depotId,
+      },
+      'DriverRouteAuth',
+      id,
+      'UPDATE',
+      {
+        ...existingAuth,
+        overrideReason: updateDto.overrideReason,
+        overrideJustification: updateDto.overrideJustification,
+      },
+      updatedAuth,
+    );
+
+    return updatedAuth;
   }
 
   async removeRouteAuth(id: string, currentUser: CurrentUserPayload) {

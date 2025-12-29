@@ -1,192 +1,349 @@
-# Railway Compliance & Maintenance Management System
+# Railway Compliance and Maintenance Management System
 
-A comprehensive, enterprise-grade system designed to digitize and manage railway operations, focusing on driver compliance, asset maintenance, and multi-depot administration.
+A digital system for managing railway driver profiles, compliance tracking, and route authorizations across multiple depots.
 
-## 1️⃣ Project Overview
+---
 
-This system solves the critical problem of tracking compliance and maintenance schedules in railway operations. It replaces manual, paper-based tracking with a centralized, digital solution that ensures safety and regulatory compliance.
+## Table of Contents
 
-**Key Capabilities:**
-*   **Driver Management:** Tracks profiles, service dates, and mandatory compliance checks (PME, GRS, TR-4, OC).
-*   **Asset Maintenance:** Manages Tower Cars and equipment with date-based and usage-based maintenance schedules.
-*   **Route Authorization:** Tracks driver route validity with expiry alerts.
-*   **Multi-Depot Operations:** Enforces strict data isolation between depots while allowing Super Admin oversight.
-*   **Audit & Compliance:** Full audit logging of all mutations, soft deletes for data preservation, and configurable system settings.
+1. [Project Overview](#1-project-overview)
+2. [High-Level Architecture](#2-high-level-architecture)
+3. [Core Concepts](#3-core-concepts)
+4. [Tech Stack](#4-tech-stack)
+5. [Environment Setup](#5-environment-setup)
+6. [Running the Project](#6-running-the-project)
+7. [Authentication and Roles](#7-authentication-and-roles)
+8. [Notifications](#8-notifications)
+9. [Audit and Compliance Guarantees](#9-audit-and-compliance-guarantees)
+10. [Phase 2 Roadmap](#10-phase-2-roadmap)
 
-**Target Audience:** Railway operational managers, depot administrators, and compliance officers.
+---
 
-## 2️⃣ High-Level Architecture
+## 1. Project Overview
 
-The system follows a modern, decoupled architecture:
+### Purpose
 
-*   **Frontend:** Next.js 14+ (App Router) for a responsive, mobile-first user interface.
-*   **Backend:** NestJS (Node.js) providing a robust REST API.
-*   **Database:** PostgreSQL with Prisma ORM for type-safe database interactions.
-*   **Background Services:** NestJS Scheduler for cron jobs (notifications, status updates).
-*   **Infrastructure:** Dockerized environment for consistent deployment.
+This system digitizes and manages:
 
-```mermaid
-graph TD
-    Client[Next.js Frontend] -->|REST API| API[NestJS Backend]
-    API -->|ORM| DB[(PostgreSQL)]
-    API -->|SMTP| Email[Email Service]
-    Cron[Cron Jobs] -->|Trigger| API
+- **Driver Profiles**: PF number, designation, service dates, basic pay, and depot assignment
+- **Driver Compliance Checks**: PME (Periodic Medical Examination), GRS (General Rules and Safety), TR-4, OC (Operational Certificate), with configurable schedule tracking
+- **Route Authorizations**: Track which drivers are authorized for which route sections, with expiry date monitoring
+- **Multi-Depot Operations**: Strict data isolation between depots with role-based access control
+
+### Current Scope (Phase 1)
+
+| Feature | Status |
+|---------|--------|
+| Driver Profile Management | Complete |
+| Compliance Tracking | Complete |
+| Route Authorization | Complete |
+| Multi-Depot Operations | Complete |
+| Role-Based Access Control | Complete |
+| In-App Notifications | Complete |
+| Audit Logging | Complete |
+| Asset Maintenance | **Paused** (Backend ready, UI hidden) |
+| Email Notifications | **Paused** (Backend ready, not configured) |
+
+### Target Users
+
+| Role | Description |
+|------|-------------|
+| Super Admin | Railway zone/division level administrator with global access |
+| Depot Manager | Individual depot administrator with depot-scoped access |
+| Driver | Railway tower car/inspection vehicle operator with read-only access to own data |
+
+---
+
+## 2. High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     FRONTEND (Next.js 16 / React 19)                │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │   App Router  │  Tailwind CSS  │  shadcn/ui  │  TanStack Table │  │
+│  │   Axios (API Client)  │  date-fns (Date utilities)            │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                          http://localhost:3000                       │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  │ REST API + JWT Authentication
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        BACKEND (NestJS 10)                          │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  Controllers  │  Services  │  Guards  │  Interceptors  │  Cron │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                          http://localhost:4000                       │
+│                                  │                                   │
+│                          Prisma ORM                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     POSTGRESQL 15 DATABASE                          │
+│                          localhost:5433                              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 3️⃣ Core Concepts
+### Request Flow
 
-### Roles & Permissions
-*   **Super Admin:** System-wide access. Can manage all depots, view global audits, and configure system-wide settings. Bootstrapped via environment variables.
-*   **Depot Admin:** Operational control restricted to their specific depot. Can manage drivers and assets within their jurisdiction.
-*   **Driver:** Read-only access to their own profile and compliance status.
+1. User authenticates via `/auth/login`, receives JWT tokens
+2. Frontend includes `Authorization: Bearer <token>` header
+3. Backend validates JWT, extracts user context
+4. Guards enforce role-based access
+5. Services apply depot filtering for non-Super Admin users
+6. All mutations are logged via AuditInterceptor
 
-### Depot Isolation
-Data isolation is enforced at the repository and service level. A Depot Admin cannot access or modify entities belonging to another depot. This is critical for multi-depot operational security.
+---
 
-### DriverProfile vs. User
-*   **User:** Represents authentication credentials (email, password, role).
-*   **DriverProfile:** Represents the domain entity (PF Number, Designation, Service Dates).
-*   *Note:* A User entity is linked to a DriverProfile, making the driver a first-class domain citizen.
+## 3. Core Concepts
 
-### Data Integrity & Soft Deletes
-*   **Soft Deletes:** No primary data is ever permanently deleted. All core entities support `deletedAt` to maintain historical integrity.
-*   **Audit Logging:** Every mutation (Create, Update, Delete) is logged with the actor, action, and timestamp.
-*   **Timezones:** All timestamps are stored in UTC. The system handles conversion to the configured local timezone (e.g., Asia/Kolkata) for display and logic.
+### 3.1 Roles and Permissions
 
-### System Settings
-Business logic thresholds (e.g., "Warning days before expiry") are not hardcoded. They are stored in the `SystemSettings` table, allowing dynamic configuration without code deployment.
+| Role | Scope | Create | Read | Update | Delete |
+|------|-------|--------|------|--------|--------|
+| SUPER_ADMIN | Global | All entities | All entities | All entities | Soft delete all |
+| DEPOT_MANAGER | Own depot | Drivers, compliance, routes | Depot-scoped data | Depot-scoped data | Soft delete in depot |
+| DRIVER | Own data | None | Own profile, compliance, routes | None | None |
 
-## 4️⃣ Tech Stack
+### 3.2 DriverProfile vs User
 
-### Backend
-*   **Framework:** NestJS v10
-*   **Language:** TypeScript
-*   **ORM:** Prisma v5
-*   **Auth:** Passport.js + JWT (Access & Refresh Tokens)
-*   **Validation:** class-validator + class-transformer
-*   **Scheduling:** @nestjs/schedule
+- **User**: Authentication entity (email, password, role, depotId)
+- **DriverProfile**: Domain entity linked 1:1 to a User (PF number, designation, service dates)
 
-### Frontend
-*   **Framework:** Next.js v16 (App Router)
-*   **Language:** TypeScript
-*   **Styling:** Tailwind CSS v4
-*   **Components:** Radix UI (Headless), Lucide React (Icons)
-*   **State/Data:** React Server Components, TanStack Table
+This separation enables admins without driver profiles.
 
-### Database & Tooling
-*   **Database:** PostgreSQL 15+
-*   **Containerization:** Docker & Docker Compose
-*   **Package Manager:** npm
+### 3.3 Depot Isolation
 
-## 5️⃣ Environment Setup
+All data access for DEPOT_MANAGER and DRIVER roles is filtered by depot at the service layer.
+
+### 3.4 Soft Delete Strategy
+
+All core entities implement soft deletes:
+- `isActive: false` and `deletedAt` timestamp set on delete
+- All queries filter by `isActive: true` and `deletedAt: null`
+- Deleted records can be recreated (reactivated) with same email/PF
+
+---
+
+## 4. Tech Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Frontend | Next.js 16 | React framework with App Router |
+| UI | Tailwind CSS + shadcn/ui | Styling and components |
+| Backend | NestJS 10 | TypeScript API framework |
+| ORM | Prisma 5 | Database access and migrations |
+| Database | PostgreSQL 15 | Primary data store |
+| Container | Docker | Database containerization |
+
+---
+
+## 5. Environment Setup
 
 ### Prerequisites
-*   Node.js v20+
-*   Docker & Docker Compose (recommended) OR Local PostgreSQL 15+
 
-### Environment Variables
+1. **Node.js 20.x LTS** - [nodejs.org](https://nodejs.org/)
+2. **Docker Desktop** - [docker.com](https://www.docker.com/products/docker-desktop)
+3. **Git** - [git-scm.com](https://git-scm.com/)
 
-**Backend (`backend/.env`)**
-```env
-# Database Connection
-DATABASE_URL="postgresql://railway_user:railway_password@localhost:5432/railway_compliance?schema=public"
+### Clone and Configure
 
-# Application Config
-PORT=4000
-NODE_ENV=development
-FRONTEND_URL=http://localhost:3000
-
-# Security (CHANGE IN PRODUCTION)
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars
-JWT_REFRESH_SECRET=your-super-secret-refresh-key-min-32-chars
-JWT_EXPIRATION=15m
-JWT_REFRESH_EXPIRATION=7d
-
-# Super Admin Bootstrap
-SUPER_ADMIN_EMAIL=admin@railway.com
-SUPER_ADMIN_PASSWORD=ChangeThisPassword123!
-
-# Localization
-TIMEZONE=Asia/Kolkata
-
-# Email (SMTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM=noreply@railway.com
-```
-
-**Frontend (`frontend/.env.local`)**
-```env
-NEXT_PUBLIC_API_URL=http://localhost:4000
-```
-
-## 6️⃣ Running the Project (Local)
-
-### 1. Database Setup
-Start PostgreSQL using Docker:
 ```bash
-docker-compose up -d postgres
+git clone <repository-url>
+cd "Tower car driver"
+
+# Backend environment
+cp backend/.env.example backend/.env
+# Edit backend/.env if needed
+
+# Frontend environment (optional, defaults work for local dev)
+cp frontend/.env.example frontend/.env.local
 ```
 
-### 2. Backend Setup
-Initialize the backend, run migrations, and seed the database:
+---
+
+## 6. Running the Project
+
+### First Time Setup
+
 ```bash
+# 1. Start PostgreSQL database
+docker compose up -d postgres
+
+# 2. Setup backend
 cd backend
 npm install
 npx prisma generate
 npx prisma migrate dev
-npm run prisma:seed
+npx prisma db seed
 npm run start:dev
-```
-*The backend will start on `http://localhost:4000`.*
 
-### 3. Frontend Setup
-Start the Next.js development server:
-```bash
+# 3. Setup frontend (new terminal)
 cd frontend
 npm install
 npm run dev
 ```
-*The frontend will be available at `http://localhost:3000`.*
 
-## 7️⃣ Authentication & Roles
+### Regular Startup
 
-*   **Login Flow:** Standard email/password login returning a JWT Access Token and a Refresh Token.
-*   **Super Admin Bootstrap:** On application startup, the system checks if a Super Admin exists. If not, it creates one using the credentials in `.env`.
-*   **Role Enforcement:** `Guards` in NestJS enforce role-based access control (RBAC) on API endpoints.
+```bash
+# Terminal 1 - Database
+docker compose up -d postgres
 
-## 8️⃣ Notifications & Cron Jobs
+# Terminal 2 - Backend
+cd backend && npm run start:dev
 
-The system runs daily cron jobs to check for expiring compliance items and maintenance schedules.
+# Terminal 3 - Frontend
+cd frontend && npm run dev
+```
 
-*   **Triggers:**
-    *   Compliance expiring within `warningDays` (configured in SystemSettings).
-    *   Maintenance overdue or approaching due date.
-*   **Delivery:**
-    *   **In-App:** Notifications stored in the database for user dashboard.
-    *   **Email:** Sent via SMTP service (if configured).
-*   **Escalation:** Overdue items are flagged for higher-level attention.
+### Accessing the Application
 
-## 9️⃣ Audit & Compliance Guarantees
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:4000
+- **Database Browser**: `cd backend && npx prisma studio` (opens http://localhost:5555)
 
-*   **Audit Logs:** The `AuditLog` entity records `entityId`, `entityType`, `action` (CREATE, UPDATE, DELETE), `performedBy`, and `changes` (JSON diff).
-*   **Soft Deletes:** Entities are never physically removed. The `deletedAt` field marks them as inactive, preserving the audit trail.
-*   **Overrides:** Manual overrides of compliance status are strictly logged with justification.
+### Default Credentials
 
-## 🔟 Extending the System
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | admin@railway.com | ChangeThisPassword123! |
+| Depot Manager (CBE) | admin-cbe@railway.com | DepotManager123! |
+| Depot Manager (ED) | admin-ed@railway.com | DepotManager123! |
+| Depot Manager (SA) | admin-sa@railway.com | DepotManager123! |
+| Sample Driver | durgadas.k@railway.com | DriverPassword123! |
 
-### Adding New Compliance Types
-1.  Update the `ComplianceTypeName` enum in `schema.prisma`.
-2.  Run `npx prisma migrate dev`.
-3.  Update the frontend forms to include the new type.
+---
 
-### Adding Maintenance Rules
-1.  Update `MaintenanceTypeName` in `schema.prisma`.
-2.  Configure default intervals in `SystemSettings` (via seed or API).
+## 7. Authentication and Roles
 
-### Future Proofing
-The system is built to be agnostic of specific rule values. Always prefer adding configuration to `SystemSettings` rather than hardcoding values in the codebase.
+### Login Flow
+
+1. POST `/auth/login` with `{ email, password }`
+2. Returns `{ accessToken, refreshToken, user }`
+3. Frontend stores tokens in localStorage
+4. Token auto-refresh on 401 response
+
+### Role Behaviors
+
+- **Super Admin**: Full access to all depots, can create admins and drivers
+- **Depot Manager**: Scoped to their depot, can manage drivers and compliance
+- **Driver**: Read-only access to own data
+
+---
+
+## 8. Notifications
+
+### Current Implementation
+
+In-app notifications for:
+- Compliance due soon (configurable threshold)
+- Compliance overdue
+- Route authorization expiring/expired
+
+Notifications are generated via scheduled tasks (cron).
+
+### Email Notifications
+
+Backend is ready but requires SMTP configuration in `.env`.
+
+---
+
+## 9. Audit and Compliance Guarantees
+
+### What is Logged
+
+All create, update, and delete operations log:
+- User who performed the action
+- Timestamp
+- Before and after values
+
+### Soft Deletes
+
+- Data is never permanently deleted
+- Deleted records can be reactivated
+- Historical report accuracy maintained
+
+---
+
+## 10. Phase 2 Roadmap
+
+Features planned for Phase 2:
+
+1. **Asset Maintenance Management**
+   - Tower car tracking
+   - Usage-based maintenance schedules
+   - Backend is ready, UI needs implementation
+
+2. **Email Notifications**
+   - Configure SMTP
+   - Enable scheduled email delivery
+
+3. **Reporting**
+   - Compliance reports
+   - Route authorization status reports
+   - Export to PDF/Excel
+
+4. **Advanced Filtering**
+   - Date range filters
+   - Multi-select filters
+
+---
+
+## Project Structure
+
+```
+Tower car driver/
+├── docker-compose.yml        # PostgreSQL container
+├── README.md                 # This file
+├── backend/
+│   ├── .env.example          # Environment template
+│   ├── prisma/
+│   │   ├── schema.prisma     # Database schema
+│   │   └── seeds/seed.ts     # Initial data
+│   └── src/                  # NestJS application
+└── frontend/
+    ├── .env.example          # Environment template
+    ├── app/                  # Next.js pages
+    ├── components/           # React components
+    └── lib/                  # Utilities
+```
+
+---
+
+## Troubleshooting
+
+### Cannot connect to database
+
+```bash
+docker compose ps           # Check container status
+docker compose restart postgres
+```
+
+### Port already in use
+
+```bash
+lsof -i :4000  # or :3000
+kill -9 <PID>
+```
+
+### Reset database
+
+```bash
+cd backend
+npx prisma migrate reset    # WARNING: Deletes all data
+```
+
+### Login returns 401
+
+1. Verify correct credentials
+2. Check user exists: `npx prisma studio`
+3. Re-run seed: `npx prisma db seed`
+
+---
+
+## License
+
+Internal use only. Not for distribution.
 

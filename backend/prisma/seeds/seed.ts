@@ -6,32 +6,73 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Starting seed...');
 
-  // Create a depot
-  const depot = await prisma.depot.upsert({
-    where: { code: 'CBE' },
-    update: {},
-    create: {
-      name: 'Coimbatore Depot',
-      code: 'CBE',
-      address: 'Coimbatore, Tamil Nadu',
-    },
-  });
+  // Create all depots
+  const depotData = [
+    { code: 'CBE', name: 'Coimbatore Depot', address: 'Coimbatore, Tamil Nadu' },
+    { code: 'ED', name: 'Erode Depot', address: 'Erode, Tamil Nadu' },
+    { code: 'SA', name: 'Salem Depot', address: 'Salem, Tamil Nadu' },
+  ];
 
-  console.log('Created depot:', depot.name);
+  const depots: Record<string, any> = {};
 
-  // Create a user for the driver
+  for (const depot of depotData) {
+    depots[depot.code] = await prisma.depot.upsert({
+      where: { code: depot.code },
+      update: { name: depot.name, address: depot.address },
+      create: depot,
+    });
+    console.log('Created/updated depot:', depot.name);
+  }
+
+  // Create a user for the driver (update password hash to ensure login works)
+  const driverPasswordHash = await bcrypt.hash('DriverPassword123!', 10);
   const driverUser = await prisma.user.upsert({
     where: { email: 'durgadas.k@railway.com' },
-    update: {},
+    update: {
+      passwordHash: driverPasswordHash,
+    },
     create: {
       email: 'durgadas.k@railway.com',
-      passwordHash: await bcrypt.hash('DriverPassword123!', 10),
+      passwordHash: driverPasswordHash,
       role: UserRole.DRIVER,
-      depotId: depot.id,
+      depotId: depots['CBE'].id,
     },
   });
 
   console.log('Created driver user:', driverUser.email);
+
+  // Create/update Depot Managers for each depot
+  const depotManagerPasswordHash = await bcrypt.hash('DepotManager123!', 10);
+
+  const depotManagerData = [
+    { email: 'admin-cbe@railway.com', depotCode: 'CBE' },
+    { email: 'admin-ed@railway.com', depotCode: 'ED' },
+    { email: 'admin-sa@railway.com', depotCode: 'SA' },
+  ];
+
+  for (const dm of depotManagerData) {
+    const existingManager = await prisma.user.findUnique({
+      where: { email: dm.email },
+    });
+
+    if (existingManager) {
+      await prisma.user.update({
+        where: { email: dm.email },
+        data: { passwordHash: depotManagerPasswordHash },
+      });
+      console.log('Updated depot manager password:', dm.email);
+    } else {
+      await prisma.user.create({
+        data: {
+          email: dm.email,
+          passwordHash: depotManagerPasswordHash,
+          role: UserRole.DEPOT_MANAGER,
+          depotId: depots[dm.depotCode].id,
+        },
+      });
+      console.log('Created depot manager:', dm.email);
+    }
+  }
 
   // Create driver profile (from provided mock data)
   const driverProfile = await prisma.driverProfile.upsert({
@@ -45,7 +86,7 @@ async function main() {
       basicPay: 32900,
       dateOfAppointment: new Date('2018-02-28'),
       dateOfEntry: new Date('2022-01-27'),
-      depotId: depot.id,
+      depotId: depots['CBE'].id,
     },
   });
 
@@ -89,7 +130,7 @@ async function main() {
 
   console.log('Created compliance types');
 
-  // Create driver compliances
+  // Create driver compliances (check for existing to avoid duplicates)
   const compliances = [
     {
       type: ComplianceTypeName.PME,
@@ -120,25 +161,45 @@ async function main() {
   for (const comp of compliances) {
     const complianceType = complianceTypes.find((ct) => ct.name === comp.type);
     if (complianceType) {
-      await prisma.driverCompliance.create({
-        data: {
+      // Check if compliance already exists for this driver and type
+      const existingCompliance = await prisma.driverCompliance.findFirst({
+        where: {
           driverProfileId: driverProfile.id,
           complianceTypeId: complianceType.id,
-          doneDate: new Date(comp.doneDate),
-          dueDate: new Date(comp.dueDate),
-          frequencyMonths: comp.frequencyMonths,
+          isActive: true,
+          deletedAt: null,
         },
       });
+
+      if (!existingCompliance) {
+        await prisma.driverCompliance.create({
+          data: {
+            driverProfileId: driverProfile.id,
+            complianceTypeId: complianceType.id,
+            doneDate: new Date(comp.doneDate),
+            dueDate: new Date(comp.dueDate),
+            frequencyMonths: comp.frequencyMonths,
+          },
+        });
+      }
     }
   }
 
   console.log('Created driver compliances');
 
-  // Create route sections (predefined)
+  // Create route sections (predefined - all predefined sections are shared across depots)
+  // Each route is associated with the depots it connects
   const routeSections = [
-    { code: 'CBE-ED', name: 'Coimbatore to Erode', description: 'Main line section' },
-    { code: 'ED-SA', name: 'Erode to Salem', description: 'Main line section' },
-    { code: 'SA-JTJ', name: 'Salem to Jolarpettai', description: 'Main line section' },
+    // Coimbatore Depot routes
+    { code: 'CBE-ED', name: 'Coimbatore to Erode', description: 'CBE Division main line', depots: ['CBE', 'ED'] },
+    { code: 'CBE-PGT', name: 'Coimbatore to Palakkad', description: 'CBE Division Kerala section', depots: ['CBE'] },
+    // Erode Depot routes
+    { code: 'ED-SA', name: 'Erode to Salem', description: 'ED-SA Division main line', depots: ['ED', 'SA'] },
+    { code: 'ED-TPJ', name: 'Erode to Tiruchirapalli', description: 'ED Division branch line', depots: ['ED'] },
+    // Salem Depot routes
+    { code: 'SA-JTJ', name: 'Salem to Jolarpettai', description: 'SA Division main line', depots: ['SA'] },
+    { code: 'SA-TPJ', name: 'Salem to Tiruchirapalli', description: 'SA Division main line', depots: ['SA'] },
+    { code: 'SA-VRI', name: 'Salem to Virudhunagar', description: 'SA Division branch line', depots: ['SA'] },
   ];
 
   for (const section of routeSections) {
@@ -160,12 +221,19 @@ async function main() {
           depotId: null,
         },
       });
+      console.log('Created route section:', section.code, '-', section.name);
+    } else {
+      // Update description if exists
+      await prisma.routeSection.update({
+        where: { id: existing.id },
+        data: { description: section.description },
+      });
     }
   }
 
   console.log('Created route sections');
 
-  // Create route authorizations
+  // Create route authorizations (check for existing to avoid duplicates)
   const routeAuths = [
     { section: 'CBE-ED', authorizedDate: '2025-10-08', expiryDate: '2026-01-07' },
     { section: 'ED-SA', authorizedDate: '2025-09-29', expiryDate: '2025-12-28' },
@@ -177,14 +245,26 @@ async function main() {
       where: { code: auth.section, isPredefined: true },
     });
     if (section) {
-      await prisma.driverRouteAuth.create({
-        data: {
+      // Check if authorization already exists for this driver and section
+      const existingAuth = await prisma.driverRouteAuth.findFirst({
+        where: {
           driverProfileId: driverProfile.id,
           routeSectionId: section.id,
-          authorizedDate: new Date(auth.authorizedDate),
-          expiryDate: new Date(auth.expiryDate),
+          isActive: true,
+          deletedAt: null,
         },
       });
+
+      if (!existingAuth) {
+        await prisma.driverRouteAuth.create({
+          data: {
+            driverProfileId: driverProfile.id,
+            routeSectionId: section.id,
+            authorizedDate: new Date(auth.authorizedDate),
+            expiryDate: new Date(auth.expiryDate),
+          },
+        });
+      }
     }
   }
 
@@ -234,3 +314,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

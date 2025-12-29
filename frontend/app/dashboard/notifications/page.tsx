@@ -1,167 +1,209 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { DashboardLayout } from '@/components/layout/dashboard-layout';
-import { api } from '@/lib/api';
-import { format } from 'date-fns';
-import { Check } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { auth, User } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toaster";
+import { Bell, Check, CheckCheck, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
 
 interface Notification {
   id: string;
+  userId: string;
   title: string;
   message: string;
   isRead: boolean;
-  relatedEntityType?: string;
-  relatedEntityId?: string;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
   createdAt: string;
 }
 
 export default function NotificationsPage() {
+  const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'unread'>('unread');
+  const [filter, setFilter] = useState<"all" | "unread">("all");
 
   useEffect(() => {
+    const currentUser = auth.getCurrentUser();
+    setUser(currentUser);
     loadNotifications();
   }, []);
 
   const loadNotifications = async () => {
     try {
-      const response = await api.get('/notifications');
+      const response = await api.get("/notifications");
       setNotifications(response.data);
     } catch (error) {
-      console.error('Failed to load notifications:', error);
+      console.error("Failed to load notifications:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load notifications",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const markAsRead = async (id: string) => {
+  const handleMarkAsRead = async (id: string) => {
     try {
       await api.patch(`/notifications/${id}/read`);
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       );
     } catch (error) {
-      console.error('Failed to mark as read:', error);
+      toast({
+        title: "Error",
+        description: "Failed to mark notification as read",
+        variant: "destructive",
+      });
     }
   };
 
-  const markAllAsRead = async () => {
+  const handleMarkAllAsRead = async () => {
     try {
-      await api.patch('/notifications/read-all');
+      await api.patch("/notifications/read-all");
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      toast({
+        title: "Success",
+        description: "All notifications marked as read",
+        variant: "success",
+      });
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
+      toast({
+        title: "Error",
+        description: "Failed to mark all notifications as read",
+        variant: "destructive",
+      });
     }
   };
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (filter === 'all') return true;
-    return !n.isRead;
-  });
+  const filteredNotifications =
+    filter === "unread"
+      ? notifications.filter((n) => !n.isRead)
+      : notifications;
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground mb-1">
-              Notifications
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              System alerts and reminders
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={markAllAsRead}
-              className="px-4 py-2 rounded-lg glass border border-slate-700/50 hover:bg-accent/50 transition-colors text-sm"
-            >
-              Mark All Read
-            </button>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Notifications</h2>
+          <p className="text-muted-foreground">
+            {unreadCount > 0
+              ? `You have ${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}`
+              : "All caught up!"}
+          </p>
         </div>
-
-        <div className="glass rounded-lg p-4 border border-slate-700/50">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setFilter('unread')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filter === 'unread'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-accent/50 text-foreground hover:bg-accent'
-              }`}
-            >
-              Unread
-            </button>
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filter === 'all'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-accent/50 text-foreground hover:bg-accent'
-              }`}
-            >
-              All
-            </button>
-          </div>
+        <div className="flex gap-2">
+          <Button
+            variant={filter === "all" ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setFilter("all")}
+          >
+            All
+          </Button>
+          <Button
+            variant={filter === "unread" ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setFilter("unread")}
+          >
+            Unread ({unreadCount})
+          </Button>
+          {unreadCount > 0 && (
+            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+              <CheckCheck className="mr-2 h-4 w-4" />
+              Mark all read
+            </Button>
+          )}
         </div>
+      </div>
 
-        {loading ? (
-          <div className="glass rounded-lg p-8 text-center text-muted-foreground">
-            Loading...
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filteredNotifications.length === 0 ? (
-              <div className="glass rounded-lg p-8 text-center text-sm text-muted-foreground">
-                No notifications found
-              </div>
-            ) : (
-              filteredNotifications.map((notification) => (
+      {/* Notifications List */}
+      <Card>
+        <CardContent className="p-0">
+          {filteredNotifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Bell className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <p className="text-lg font-medium">
+                {filter === "unread" ? "No unread notifications" : "No notifications"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {filter === "unread"
+                  ? "You're all caught up!"
+                  : "Notifications will appear here"}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {filteredNotifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className={`glass rounded-lg p-4 border border-slate-700/50 ${
-                    !notification.isRead ? 'bg-accent/10' : ''
-                  }`}
+                  className={cn(
+                    "p-4 flex items-start gap-4 transition-colors",
+                    !notification.isRead && "bg-primary/5"
+                  )}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-semibold text-foreground">
-                          {notification.title}
-                        </h3>
-                        {!notification.isRead && (
-                          <span className="w-2 h-2 bg-primary rounded-full" />
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(
-                          new Date(notification.createdAt),
-                          'MMM dd, yyyy HH:mm'
-                        )}
-                      </p>
-                    </div>
-                    {!notification.isRead && (
-                      <button
-                        onClick={() => markAsRead(notification.id)}
-                        className="p-2 rounded-lg hover:bg-accent/50 transition-colors flex-shrink-0"
-                        aria-label="Mark as read"
-                      >
-                        <Check className="w-4 h-4 text-muted-foreground" />
-                      </button>
+                  <div
+                    className={cn(
+                      "mt-1 w-2 h-2 rounded-full flex-shrink-0",
+                      notification.isRead ? "bg-muted" : "bg-primary"
                     )}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={cn(
+                            "font-medium",
+                            !notification.isRead && "text-foreground"
+                          )}
+                        >
+                          {notification.title}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground/70 mt-2">
+                          {formatDistanceToNow(new Date(notification.createdAt), {
+                            addSuffix: true,
+                          })}
+                        </p>
+                      </div>
+                      {!notification.isRead && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleMarkAsRead(notification.id)}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-    </DashboardLayout>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
+

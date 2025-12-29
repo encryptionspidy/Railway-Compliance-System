@@ -3,6 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Logger,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
@@ -11,6 +12,8 @@ import { Request } from 'express';
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(AuditInterceptor.name);
+
   constructor(private auditService: AuditService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -58,7 +61,7 @@ export class AuditInterceptor implements NestInterceptor {
           );
         } catch (error) {
           // Don't break the request if audit logging fails
-          console.error('Audit logging error:', error);
+          this.logger.error('Audit logging error:', error);
         }
       }),
     );

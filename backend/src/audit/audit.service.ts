@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUserPayload } from '../common/decorators/current-user.decorator';
 
@@ -11,6 +11,8 @@ export interface AuditContext {
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async log(
@@ -37,7 +39,7 @@ export class AuditService {
       });
     } catch (error) {
       // Don't throw - audit logging should not break the main flow
-      console.error('Failed to log audit:', error);
+      this.logger.error('Failed to log audit:', error);
     }
   }
 
