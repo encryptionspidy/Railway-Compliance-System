@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Security headers are handled in middleware.ts
+  // Allow mobile/network device access during development
+  allowedDevOrigins: ['http://10.1.14.174:3000'],
 };
 
 module.exports = nextConfig;

@@ -17,10 +17,12 @@ export function middleware(request: NextRequest) {
   // Referrer policy
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   
-  // Content Security Policy (restrictive)
+  // Content Security Policy
+  // Allow connections to both localhost and network IP for development
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost:4000;"
+    `default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ${apiUrl} http://localhost:4000 http://10.1.14.174:4000;`
   );
 
   return response;

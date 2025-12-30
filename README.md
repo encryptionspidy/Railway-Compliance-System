@@ -341,6 +341,33 @@ npx prisma migrate reset    # WARNING: Deletes all data
 2. Check user exists: `npx prisma studio`
 3. Re-run seed: `npx prisma db seed`
 
+### Mobile/Device Testing on Same Network
+
+To test from a mobile device or another computer on the same network:
+
+1. Find your computer's IP address:
+   ```bash
+   # Linux/Mac
+   hostname -I | awk '{print $1}'
+   # or
+   ip addr show | grep "inet " | grep -v 127.0.0.1
+   ```
+
+2. Update frontend environment to use your IP:
+   ```bash
+   # frontend/.env.local
+   NEXT_PUBLIC_API_URL=http://YOUR_IP:4000
+   ```
+
+3. Restart the frontend:
+   ```bash
+   cd frontend && npm run dev
+   ```
+
+4. Access from mobile: `http://YOUR_IP:3000`
+
+Note: Both frontend (3000) and backend (4000) must be accessible from the network.
+
 ---
 
 ## License
